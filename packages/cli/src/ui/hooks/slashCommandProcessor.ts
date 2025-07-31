@@ -47,6 +47,7 @@ export const useSlashCommandProcessor = (
   openThemeDialog: () => void,
   openAuthDialog: () => void,
   openEditorDialog: () => void,
+  openModelDialog: () => void,
   toggleCorgiMode: () => void,
   setQuittingMessages: (message: HistoryItem[]) => void,
   openPrivacyNotice: () => void,
@@ -345,6 +346,9 @@ export const useSlashCommandProcessor = (
                       return { type: 'handled' };
                     case 'privacy':
                       openPrivacyNotice();
+                      return { type: 'handled' };
+                    case 'model':
+                      openModelDialog();
                       return { type: 'handled' };
                     default: {
                       const unhandled: never = result.dialog;

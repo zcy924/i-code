@@ -16,6 +16,10 @@ const CONTENT_LOOP_THRESHOLD = 10;
 const CONTENT_CHUNK_SIZE = 50;
 const MAX_HISTORY_LENGTH = 1000;
 
+// 基于句子的备用检测常量
+const SENTENCE_CONTENT_LOOP_THRESHOLD = 10;
+const SENTENCE_ENDING_PUNCTUATION_REGEX = /[.!?]+(?=\s|$)/;
+
 /**
  * The number of recent conversation turns to include in the history when asking the LLM to check for a loop.
  */
@@ -67,6 +71,11 @@ export class LoopDetectionService {
   private llmCheckInterval = DEFAULT_LLM_CHECK_INTERVAL;
   private lastCheckTurn = 0;
 
+  // 基于句子的备用检测状态
+  private lastRepeatedSentence: string = '';
+  private sentenceRepetitionCount: number = 0;
+  private partialSentenceContent: string = '';
+
   constructor(config: Config) {
     this.config = config;
   }
@@ -92,6 +101,7 @@ export class LoopDetectionService {
         // content chanting only happens in one single stream, reset if there
         // is a tool call in between
         this.resetContentTracking();
+        this.resetSentenceTracking();
         this.loopDetected = this.checkToolCallLoop(event.value);
         break;
       case GeminiEventType.Content:
@@ -159,9 +169,18 @@ export class LoopDetectionService {
    */
   private checkContentLoop(content: string): boolean {
     this.streamContentHistory += content;
+    this.partialSentenceContent += content;
 
     this.truncateAndUpdate();
-    return this.analyzeContentChunksForLoop();
+    
+    // 首先尝试基于块的检测
+    const blockDetected = this.analyzeContentChunksForLoop();
+    if (blockDetected) {
+      return true;
+    }
+    
+    // 同时进行基于句子的检测作为备用
+    return this.checkSentenceBasedLoop();
   }
 
   /**
@@ -293,6 +312,53 @@ export class LoopDetectionService {
     return originalChunk === currentChunk;
   }
 
+  /**
+   * 基于句子的内容循环检测（备用方法）
+   * 当基于块的检测无法有效工作时使用
+   */
+  private checkSentenceBasedLoop(): boolean {
+    if (!SENTENCE_ENDING_PUNCTUATION_REGEX.test(this.partialSentenceContent)) {
+      return false;
+    }
+
+    const completeSentences =
+      this.partialSentenceContent.match(/[^.!?]+[.!?]+(?=\s|$)/g) || [];
+    if (completeSentences.length === 0) {
+      return false;
+    }
+
+    const lastSentence = completeSentences[completeSentences.length - 1];
+    const lastCompleteIndex = this.partialSentenceContent.lastIndexOf(lastSentence);
+    const endOfLastSentence = lastCompleteIndex + lastSentence.length;
+    this.partialSentenceContent = this.partialSentenceContent.slice(endOfLastSentence);
+
+    for (const sentence of completeSentences) {
+      const trimmedSentence = sentence.trim();
+      if (trimmedSentence === '') {
+        continue;
+      }
+
+      if (this.lastRepeatedSentence === trimmedSentence) {
+        this.sentenceRepetitionCount++;
+      } else {
+        this.lastRepeatedSentence = trimmedSentence;
+        this.sentenceRepetitionCount = 1;
+      }
+
+      if (this.sentenceRepetitionCount >= SENTENCE_CONTENT_LOOP_THRESHOLD) {
+        logLoopDetected(
+          this.config,
+          new LoopDetectedEvent(
+            LoopType.CHANTING_IDENTICAL_SENTENCES,
+            this.promptId,
+          ),
+        );
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async checkForLoopWithLLM(signal: AbortSignal) {
     const recentHistory = this.config
       .getGeminiClient()
@@ -336,7 +402,15 @@ EXAMPLES OF CORRECT RESPONSES:
 {"reasoning": "The assistant is making different tool calls with varying parameters and each call produces different results, showing clear forward progress.", "confidence": 0.1}
 
 Remember: ONLY return the JSON object. Nothing else.`;
+    const systemInstruction = `You are ONLY a diagnostic agent. Your SOLE function is to analyze conversation patterns and return JSON.
+
+CRITICAL: You are NOT a coding assistant. You CANNOT use tools. You CANNOT execute functions. 
+You can ONLY analyze text and return a JSON object with "reasoning" and "confidence" fields.
+
+If you try to use tools or return anything other than the specified JSON format, you will fail your task.`;
+
     const contents = [
+      { role: 'system', parts: [{ text: systemInstruction }] },
       ...recentHistory,
       { role: 'user', parts: [{ text: prompt }] },
     ];
@@ -347,14 +421,19 @@ Remember: ONLY return the JSON object. Nothing else.`;
           type: Type.STRING,
           description:
             'Your reasoning on if the conversation is looping without forward progress.',
+          minLength: 10,
+          maxLength: 500,
         },
         confidence: {
           type: Type.NUMBER,
           description:
             'A number between 0.0 and 1.0 representing your confidence that the conversation is in an unproductive state.',
+          minimum: 0.0,
+          maximum: 1.0,
         },
       },
       required: ['reasoning', 'confidence'],
+      additionalProperties: false, // 禁止额外属性
     };
     let result;
     try {
@@ -362,9 +441,9 @@ Remember: ONLY return the JSON object. Nothing else.`;
         .getGeminiClient()
         .generateJson(contents, schema, signal, DEFAULT_GEMINI_FLASH_MODEL);
     } catch (e) {
-      // Do nothing, treat it as a non-loop.
-      this.config.getDebugMode() ? console.error(e) : console.debug(e);
-      return false;
+      // LLM检测失败，触发基于句子的备用检测
+      this.config.getDebugMode() ? console.error('LLM loop detection failed, falling back to sentence-based detection:', e) : console.debug('LLM loop detection failed, using fallback method');
+      return this.performFallbackLoopDetection();
     }
 
     if (typeof result.confidence === 'number') {
@@ -410,7 +489,66 @@ Remember: ONLY return the JSON object. Nothing else.`;
           }
         }
       }
+      
+      // 最后的备用方案：使用基于句子的检测
+      return this.performFallbackLoopDetection();
     }
+    return false;
+  }
+
+  /**
+   * 当LLM检测失败时的备用循环检测方法
+   * 基于对话历史进行句子级别的重复检测
+   */
+  private performFallbackLoopDetection(): boolean {
+    const recentHistory = this.config
+      .getGeminiClient()
+      .getHistory()
+      .slice(-10); // 检查最近10轮对话
+
+    // 提取所有助手的文本内容
+    const assistantTexts: string[] = [];
+    for (const historyItem of recentHistory) {
+      if (historyItem.role === 'model' && historyItem.parts) {
+        for (const part of historyItem.parts) {
+          if ('text' in part && part.text) {
+            assistantTexts.push(part.text);
+          }
+        }
+      }
+    }
+
+    if (assistantTexts.length < 3) {
+      return false; // 历史不够多，无法判断
+    }
+
+    // 检查最近的助手回复是否有重复模式
+    const lastThreeTexts = assistantTexts.slice(-3);
+    const sentences = lastThreeTexts.join(' ').match(/[^.!?]+[.!?]+/g) || [];
+    
+    // 统计句子重复
+    const sentenceCount = new Map<string, number>();
+    for (const sentence of sentences) {
+      const trimmed = sentence.trim();
+      if (trimmed.length > 10) { // 忽略太短的句子
+        sentenceCount.set(trimmed, (sentenceCount.get(trimmed) || 0) + 1);
+      }
+    }
+
+    // 检查是否有句子重复超过阈值
+    for (const [sentence, count] of sentenceCount) {
+      if (count >= 3) {
+        if (this.config.getDebugMode()) {
+          console.warn('Fallback loop detection: repeated sentence detected:', sentence);
+        }
+        logLoopDetected(
+          this.config,
+          new LoopDetectedEvent(LoopType.CHANTING_IDENTICAL_SENTENCES, this.promptId),
+        );
+        return true;
+      }
+    }
+
     return false;
   }
 
@@ -422,6 +560,7 @@ Remember: ONLY return the JSON object. Nothing else.`;
     this.resetToolCallCount();
     this.resetContentTracking();
     this.resetLlmCheckTracking();
+    this.resetSentenceTracking();
     this.loopDetected = false;
   }
 
@@ -442,5 +581,11 @@ Remember: ONLY return the JSON object. Nothing else.`;
     this.turnsInCurrentPrompt = 0;
     this.llmCheckInterval = DEFAULT_LLM_CHECK_INTERVAL;
     this.lastCheckTurn = 0;
+  }
+
+  private resetSentenceTracking(): void {
+    this.lastRepeatedSentence = '';
+    this.sentenceRepetitionCount = 0;
+    this.partialSentenceContent = '';
   }
 }

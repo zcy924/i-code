@@ -15,6 +15,7 @@ import {
   BugCommandSettings,
   TelemetrySettings,
   AuthType,
+  CustomModelConfig,
 } from '@google/gemini-cli-core';
 import stripJsonComments from 'strip-json-comments';
 import { DefaultLight } from '../ui/themes/default-light.js';
@@ -78,6 +79,7 @@ export interface Settings {
   bugCommand?: BugCommandSettings;
   checkpointing?: CheckpointingSettings;
   autoConfigureMaxOldSpaceSize?: boolean;
+  customModels?: CustomModelConfig[];
 
   // Git-aware file filtering settings
   fileFiltering?: {

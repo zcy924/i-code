@@ -11,6 +11,14 @@ import {
   ContentGeneratorConfig,
   createContentGeneratorConfig,
 } from '../core/contentGenerator.js';
+
+// 自定义模型配置接口
+export interface CustomModelConfig {
+  name: string;
+  apiKey: string;
+  endpoint: string;
+  model: string;
+}
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
 import { LSTool } from '../tools/ls.js';
@@ -50,6 +58,14 @@ import { IdeClient } from '../ide/ide-client.js';
 
 // Re-export OAuth config type
 export type { MCPOAuthConfig };
+
+// Custom model configuration interface
+export interface CustomModelConfig {
+  name: string;
+  apiKey: string;
+  endpoint: string;
+  model: string;
+}
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -125,9 +141,25 @@ export class MCPServerConfig {
   ) {}
 }
 
+// 自定义模型配置接口
+export interface CustomModelConfig {
+  name: string;
+  apiKey: string;
+  endpoint: string;
+  model: string;
+}
+
 export enum AuthProviderType {
   DYNAMIC_DISCOVERY = 'dynamic_discovery',
   GOOGLE_CREDENTIALS = 'google_credentials',
+}
+
+// 自定义模型配置接口
+export interface CustomModelConfig {
+  name: string;
+  apiKey: string;
+  endpoint: string;
+  model: string;
 }
 
 export interface SandboxConfig {
@@ -241,6 +273,10 @@ export class Config {
     | Record<string, SummarizeToolOutputSettings>
     | undefined;
   private readonly experimentalAcp: boolean = false;
+  
+  // 自定义模型相关属性
+  private customModels: CustomModelConfig[] = [];
+  private selectedCustomModel: string | undefined;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -584,6 +620,38 @@ export class Config {
 
   getIdeClient(): IdeClient | undefined {
     return this.ideClient;
+  }
+
+  // 自定义模型相关方法
+  getCustomModels(): CustomModelConfig[] {
+    return this.customModels;
+  }
+
+  setCustomModels(models: CustomModelConfig[]): void {
+    this.customModels = models;
+  }
+
+  getSelectedCustomModel(): string | undefined {
+    return this.selectedCustomModel;
+  }
+
+  setSelectedCustomModel(modelName: string): void {
+    this.selectedCustomModel = modelName;
+  }
+
+  async switchToCustomModel(modelName: string): Promise<void> {
+    // 设置选中的自定义模型
+    this.setSelectedCustomModel(modelName);
+    
+    // 重新创建内容生成器配置
+    const newConfig = createContentGeneratorConfig(this, this.contentGeneratorConfig.authType);
+    
+    // 重新初始化Gemini客户端
+    await this.geminiClient.initialize(newConfig);
+  }
+
+  getAvailableCustomModels(): CustomModelConfig[] {
+    return this.customModels;
   }
 
   async getGitService(): Promise<GitService> {

@@ -119,23 +119,19 @@ describe('useSlashCommandProcessor', () => {
 
     const { result } = renderHook(() =>
       useSlashCommandProcessor(
-        mockConfig,
-        mockSettings,
-        mockAddItem,
-        mockClearItems,
-        mockLoadHistory,
-        vi.fn(), // refreshStatic
-        mockSetShowHelp,
-        vi.fn(), // onDebugMessage
-        vi.fn(), // openThemeDialog
-        mockOpenAuthDialog,
-        vi.fn(), // openEditorDialog
-        vi.fn(), // toggleCorgiMode
-        mockSetQuittingMessages,
-        vi.fn(), // openPrivacyNotice
-        vi.fn(), // toggleVimEnabled
-        setIsProcessing,
-      ),
+          mockConfig,
+          mockSettings,
+          mockAddItem,
+          mockClearItems,
+          mockLoadHistory,
+          vi.fn(), // refreshStatic
+          mockSetShowHelp,
+          vi.fn(), // onDebugMessage
+          vi.fn(), // openThemeDialog
+          mockOpenAuthDialog,
+          vi.fn(), // openEditorDialog
+          vi.fn(), // openModelDialog
+          vi.fn(), // toggleCorgiMode,
     );
 
     return result;
@@ -817,6 +813,7 @@ describe('useSlashCommandProcessor', () => {
           vi.fn(), // openThemeDialog
           mockOpenAuthDialog,
           vi.fn(), // openEditorDialog,
+          vi.fn(), // openModelDialog
           vi.fn(), // toggleCorgiMode
           mockSetQuittingMessages,
           vi.fn(), // openPrivacyNotice

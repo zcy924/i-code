@@ -578,9 +578,13 @@ Logging in with Google... Please restart Gemini CLI to continue.
 
 **5. 如何使用**
 
-1.  **配置环境变量**：在启动 CLI 前，用户需要在自己的环境中设置好以下两个环境变量：
+1.  **配置环境变量**：在启动 CLI 前，用户需要在自己的环境中设置好以下环境变量：
     - `CUSTOM_API_KEY`: 第三方模型提供商的 API Key。
     - `CUSTOM_ENDPOINT`: 第三方模型提供商的 API 地址 (例如: `https://api.openai.com/v1`)。
-2.  **启动并选择**：运行 CLI，在初次启动的认证界面，选择新增的 "Use Custom Provider" 选项。
+    - `CUSTOM_MODEL`: 要使用的模型名称 (例如: `gpt-3.5-turbo`)。
 
-完成以上步骤后，CLI 将会使用配置的自定义模型进行交互。
+2.  **配置多个自定义模型**（可选）：用户可以在配置文件中定义多个自定义模型，然后在运行时使用 `/model` 命令进行切换。
+
+3.  **启动并选择**：运行 CLI，在初次启动的认证界面，选择新增的 "Use Custom Provider" 选项。
+
+完成以上步骤后，CLI 将会使用配置的自定义模型进行交互。在运行时，用户可以使用 `/model` 命令查看和切换不同的自定义模型。

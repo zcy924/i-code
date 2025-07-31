@@ -361,7 +361,7 @@ export async function loadCliConfig(
 
   const sandboxConfig = await loadSandboxConfig(settings, argv);
 
-  return new Config({
+  const config = new Config({
     sessionId,
     embeddingModel: DEFAULT_GEMINI_EMBEDDING_MODEL,
     sandbox: sandboxConfig,
@@ -425,6 +425,13 @@ export async function loadCliConfig(
     ideMode,
     ideClient,
   });
+  
+  // 设置自定义模型配置
+  if (settings.customModels) {
+    config.setCustomModels(settings.customModels);
+  }
+  
+  return config;
 }
 
 function mergeMcpServers(settings: Settings, extensions: Extension[]) {
