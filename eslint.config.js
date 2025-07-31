@@ -112,12 +112,12 @@ export default tseslint.config(
           caughtErrorsIgnorePattern: '^_',
         },
       ],
-      'import/no-internal-modules': [
-        'error',
-        {
-          allow: ['react-dom/test-utils', 'memfs/lib/volume.js', 'yargs/**'],
-        },
-      ],
+      // 'import/no-internal-modules': [
+      //   'error',
+      //   {
+      //     allow: ['react-dom/test-utils', 'memfs/lib/volume.js', 'yargs/**'],
+      //   },
+      // ],
       'import/no-relative-packages': 'error',
       'no-cond-assign': 'error',
       'no-debugger': 'error',

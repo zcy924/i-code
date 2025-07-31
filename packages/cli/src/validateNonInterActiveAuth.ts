@@ -18,6 +18,9 @@ function getAuthTypeFromEnv(): AuthType | undefined {
   if (process.env.GEMINI_API_KEY) {
     return AuthType.USE_GEMINI;
   }
+  if (process.env.CUSTOM_API_KEY) {
+    return AuthType.CUSTOM_PROVIDER;
+  }
   return undefined;
 }
 

@@ -18,6 +18,7 @@ import { DEFAULT_GEMINI_MODEL } from '../config/models.js';
 import { Config } from '../config/config.js';
 import { getEffectiveModel } from './modelCheck.js';
 import { UserTierId } from '../code_assist/types.js';
+import { OpenAIContentGenerator } from './openaiContentGenerator.js';
 
 /**
  * Interface abstracting the core functionalities for generating content and counting tokens.
@@ -43,6 +44,7 @@ export enum AuthType {
   USE_GEMINI = 'gemini-api-key',
   USE_VERTEX_AI = 'vertex-ai',
   CLOUD_SHELL = 'cloud-shell',
+  CUSTOM_PROVIDER = 'custom-provider',
 }
 
 export type ContentGeneratorConfig = {
@@ -51,6 +53,19 @@ export type ContentGeneratorConfig = {
   vertexai?: boolean;
   authType?: AuthType | undefined;
   proxy?: string | undefined;
+  customEndpoint?: string;
+  timeout?: number;
+  maxRetries?: number;
+  samplingParams?: {
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    stop_sequences?: string[];
+    repetition_penalty?: number;
+    top_k?: number;
+  };
 };
 
 export function createContentGeneratorConfig(
@@ -61,6 +76,9 @@ export function createContentGeneratorConfig(
   const googleApiKey = process.env.GOOGLE_API_KEY || undefined;
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT || undefined;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION || undefined;
+  const customApiKey = process.env.CUSTOM_API_KEY || undefined;
+  const customEndpoint = process.env.CUSTOM_ENDPOINT || undefined;
+  const customModel = process.env.CUSTOM_MODEL || undefined;
 
   // Use runtime model from config if available; otherwise, fall back to parameter or default
   const effectiveModel = config.getModel() || DEFAULT_GEMINI_MODEL;
@@ -70,6 +88,13 @@ export function createContentGeneratorConfig(
     authType,
     proxy: config?.getProxy(),
   };
+
+  if (authType === AuthType.CUSTOM_PROVIDER) {
+    contentGeneratorConfig.apiKey = customApiKey;
+    contentGeneratorConfig.customEndpoint = customEndpoint;
+    contentGeneratorConfig.model = customModel || '';
+    return contentGeneratorConfig;
+  }
 
   // If we are using Google auth or we are in Cloud Shell, there is nothing else to validate for now
   if (
@@ -109,6 +134,16 @@ export async function createContentGenerator(
   gcConfig: Config,
   sessionId?: string,
 ): Promise<ContentGenerator> {
+  // Handle custom provider first
+  if (config.authType === AuthType.CUSTOM_PROVIDER) {
+    return new OpenAIContentGenerator(
+      config.apiKey ?? '',
+      config.model,
+      config.customEndpoint ?? '',
+      gcConfig,
+    );
+  }
+
   const version = process.env.CLI_VERSION || process.version;
   const httpOptions = {
     headers: {

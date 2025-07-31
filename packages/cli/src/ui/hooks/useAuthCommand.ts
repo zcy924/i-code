@@ -54,7 +54,9 @@ export const useAuthCommand = (
   const handleAuthSelect = useCallback(
     async (authType: AuthType | undefined, scope: SettingScope) => {
       if (authType) {
-        await clearCachedCredentialFile();
+        if (authType !== AuthType.CUSTOM_PROVIDER) {
+          await clearCachedCredentialFile();
+        }
 
         settings.setValue(scope, 'selectedAuthType', authType);
         if (

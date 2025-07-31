@@ -59,6 +59,7 @@ export function AuthDialog({
     }
     return null;
   });
+
   const items = [
     {
       label: 'Login with Google',
@@ -77,6 +78,7 @@ export function AuthDialog({
       value: AuthType.USE_GEMINI,
     },
     { label: 'Vertex AI', value: AuthType.USE_VERTEX_AI },
+    { label: 'Use Custom Provider', value: AuthType.CUSTOM_PROVIDER },
   ];
 
   const initialAuthIndex = items.findIndex((item) => {
