@@ -263,13 +263,13 @@ export class Config {
     this.showMemoryUsage = params.showMemoryUsage ?? false;
     this.accessibility = params.accessibility ?? {};
     this.telemetrySettings = {
-      enabled: params.telemetry?.enabled ?? false,
+      enabled: false, // 强制禁用遥测数据收集
       target: params.telemetry?.target ?? DEFAULT_TELEMETRY_TARGET,
       otlpEndpoint: params.telemetry?.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT,
       logPrompts: params.telemetry?.logPrompts ?? true,
       outfile: params.telemetry?.outfile,
     };
-    this.usageStatisticsEnabled = params.usageStatisticsEnabled ?? true;
+    this.usageStatisticsEnabled = false; // 禁用使用统计
 
     this.fileFiltering = {
       respectGitIgnore: params.fileFiltering?.respectGitIgnore ?? true,

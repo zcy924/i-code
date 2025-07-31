@@ -310,7 +310,32 @@ Cognitive Loop: The assistant seems unable to determine the next logical step. I
 Crucially, differentiate between a true unproductive state and legitimate, incremental progress.
 For example, a series of 'tool_A' or 'tool_B' tool calls that make small, distinct changes to the same file (like adding docstrings to functions one by one) is considered forward progress and is NOT a loop. A loop would be repeatedly replacing the same text with the same content, or cycling between a small set of files with no net change.
 
-Please analyze the conversation history to determine the possibility that the conversation is stuck in a repetitive, non-productive state.`;
+CRITICAL OUTPUT FORMAT REQUIREMENTS:
+You MUST respond with ONLY a valid JSON object. NO additional text, explanations, markdown blocks, or formatting is allowed.
+The JSON must contain exactly these two fields with these exact names:
+- "reasoning": a string explaining your analysis
+- "confidence": a number between 0.0 and 1.0
+
+REQUIRED OUTPUT FORMAT (copy this structure exactly):
+{
+  "reasoning": "Your detailed analysis of whether the conversation shows repetitive patterns without progress",
+  "confidence": 0.5
+}
+
+VALIDATION RULES:
+- reasoning: MUST be a string, cannot be null or empty
+- confidence: MUST be a number between 0.0 and 1.0 (inclusive)
+- Use exactly these field names: "reasoning" and "confidence"
+- No additional fields allowed
+- No text outside the JSON object
+- No markdown code blocks like \`\`\`json
+
+EXAMPLES OF CORRECT RESPONSES:
+{"reasoning": "The assistant has made 8 consecutive identical tool calls without any variation in parameters or outcomes, indicating a clear unproductive loop.", "confidence": 0.95}
+
+{"reasoning": "The assistant is making different tool calls with varying parameters and each call produces different results, showing clear forward progress.", "confidence": 0.1}
+
+Remember: ONLY return the JSON object. Nothing else.`;
     const contents = [
       ...recentHistory,
       { role: 'user', parts: [{ text: prompt }] },
@@ -343,7 +368,10 @@ Please analyze the conversation history to determine the possibility that the co
     }
 
     if (typeof result.confidence === 'number') {
-      if (result.confidence > 0.9) {
+      // 验证confidence值在有效范围内
+      const confidence = Math.max(0.0, Math.min(1.0, result.confidence));
+      
+      if (confidence > 0.9) {
         if (typeof result.reasoning === 'string' && result.reasoning) {
           console.warn(result.reasoning);
         }
@@ -356,8 +384,31 @@ Please analyze the conversation history to determine the possibility that the co
         this.llmCheckInterval = Math.round(
           MIN_LLM_CHECK_INTERVAL +
             (MAX_LLM_CHECK_INTERVAL - MIN_LLM_CHECK_INTERVAL) *
-              (1 - result.confidence),
+              (1 - confidence),
         );
+      }
+    } else {
+      // 如果confidence不是数字，尝试从reasoning中提取或设默认值
+      if (this.config.getDebugMode()) {
+        console.warn('Invalid confidence value received from loop detection LLM:', result);
+      }
+      
+      // 尝试从reasoning字符串中提取confidence（如果模型返回了描述性文本）
+      if (typeof result.reasoning === 'string') {
+        const confidenceMatch = result.reasoning.match(/confidence[:\s]*([0-9]*\.?[0-9]+)/i);
+        if (confidenceMatch) {
+          const extractedConfidence = parseFloat(confidenceMatch[1]);
+          if (!isNaN(extractedConfidence) && extractedConfidence >= 0 && extractedConfidence <= 1) {
+            if (extractedConfidence > 0.9) {
+              console.warn('Loop detected based on extracted confidence:', result.reasoning);
+              logLoopDetected(
+                this.config,
+                new LoopDetectedEvent(LoopType.LLM_DETECTED_LOOP, this.promptId),
+              );
+              return true;
+            }
+          }
+        }
       }
     }
     return false;
