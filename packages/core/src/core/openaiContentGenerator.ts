@@ -178,6 +178,18 @@ export class OpenAIContentGenerator implements ContentGenerator {
         ...samplingParams,
       };
 
+      // Handle JSON schema if provided
+      if (request.config?.responseSchema && request.config?.responseMimeType === 'application/json') {
+        createParams.response_format = {
+          type: 'json_schema',
+          json_schema: {
+            name: 'response',
+            schema: this.convertGeminiSchemaToOpenAI(request.config.responseSchema),
+            strict: true
+          }
+        };
+      }
+
       if (request.config?.tools) {
         createParams.tools = await this.convertGeminiToolsToOpenAI(
           request.config.tools,
@@ -286,6 +298,18 @@ export class OpenAIContentGenerator implements ContentGenerator {
         stream: true,
         stream_options: { include_usage: true },
       };
+
+      // Handle JSON schema if provided
+      if (request.config?.responseSchema && request.config?.responseMimeType === 'application/json') {
+        createParams.response_format = {
+          type: 'json_schema',
+          json_schema: {
+            name: 'response',
+            schema: this.convertGeminiSchemaToOpenAI(request.config.responseSchema),
+            strict: true
+          }
+        };
+      }
 
       if (request.config?.tools) {
         createParams.tools = await this.convertGeminiToolsToOpenAI(
@@ -612,6 +636,79 @@ export class OpenAIContentGenerator implements ContentGenerator {
         `OpenAI API error: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  private convertGeminiSchemaToOpenAI(
+    geminiSchema: Record<string, unknown> | unknown
+  ): Record<string, unknown> {
+    if (!geminiSchema || typeof geminiSchema !== 'object') {
+      return geminiSchema as Record<string, unknown>;
+    }
+
+    const converted = JSON.parse(JSON.stringify(geminiSchema));
+
+    const convertTypes = (obj: unknown): unknown => {
+      if (typeof obj !== 'object' || obj === null) {
+        return obj;
+      }
+
+      if (Array.isArray(obj)) {
+        return obj.map(convertTypes);
+      }
+
+      const result: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (key === 'type' && typeof value === 'string') {
+          // Convert Gemini types to OpenAI JSON Schema types
+          const lowerValue = value.toLowerCase();
+          if (lowerValue === 'integer') {
+            result[key] = 'integer';
+          } else if (lowerValue === 'number') {
+            result[key] = 'number';
+          } else if (lowerValue === 'string') {
+            result[key] = 'string';
+          } else if (lowerValue === 'boolean') {
+            result[key] = 'boolean';
+          } else if (lowerValue === 'array') {
+            result[key] = 'array';
+          } else if (lowerValue === 'object') {
+            result[key] = 'object';
+          } else {
+            result[key] = lowerValue;
+          }
+        } else if (
+          key === 'minimum' ||
+          key === 'maximum' ||
+          key === 'multipleOf'
+        ) {
+          // Ensure numeric constraints are actual numbers, not strings
+          if (typeof value === 'string' && !isNaN(Number(value))) {
+            result[key] = Number(value);
+          } else {
+            result[key] = value;
+          }
+        } else if (
+          key === 'minLength' ||
+          key === 'maxLength' ||
+          key === 'minItems' ||
+          key === 'maxItems'
+        ) {
+          // Ensure length constraints are integers, not strings
+          if (typeof value === 'string' && !isNaN(Number(value))) {
+            result[key] = parseInt(value, 10);
+          } else {
+            result[key] = value;
+          }
+        } else if (typeof value === 'object') {
+          result[key] = convertTypes(value);
+        } else {
+          result[key] = value;
+        }
+      }
+      return result;
+    };
+
+    return convertTypes(converted) as Record<string, unknown>;
   }
 
   private convertGeminiParametersToOpenAI(
