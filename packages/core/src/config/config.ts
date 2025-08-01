@@ -687,6 +687,11 @@ export class Config {
     // 重新创建内容生成器配置
     const newConfig = createContentGeneratorConfig(this, this.contentGeneratorConfig.authType);
     
+    // 更新contentGeneratorConfig.model以确保getModel()返回正确的值
+    if (this.contentGeneratorConfig) {
+      this.contentGeneratorConfig.model = newConfig.model;
+    }
+    
     // 重新初始化Gemini客户端
     await this.geminiClient.initialize(newConfig);
   }

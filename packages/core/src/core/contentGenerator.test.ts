@@ -69,6 +69,8 @@ describe('createContentGeneratorConfig', () => {
     setModel: vi.fn(),
     flashFallbackHandler: vi.fn(),
     getProxy: vi.fn(),
+    getSelectedCustomModel: vi.fn().mockReturnValue(undefined),
+    getCustomModels: vi.fn().mockReturnValue([]),
   } as unknown as Config;
 
   beforeEach(() => {

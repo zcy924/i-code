@@ -233,7 +233,6 @@ export const useGeminiStream = (
             trimmedQuery,
           ),
         );
-        onDebugMessage(`User query: '${trimmedQuery}'`);
         await logger?.logMessage(MessageSenderType.USER, trimmedQuery);
 
         // Handle UI-only commands first
