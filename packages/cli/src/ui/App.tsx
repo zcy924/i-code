@@ -308,6 +308,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
         config.getFileService(),
         settings.merged,
         config.getExtensionContextFilePaths(),
+        settings.merged.memoryImportFormat || 'tree', // Use setting or default to 'tree'
         config.getFileFilteringOptions(),
       );
 
@@ -605,7 +606,12 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
       if (Object.keys(mcpServers || {}).length > 0) {
         handleSlashCommand(newValue ? '/mcp desc' : '/mcp nodesc');
       }
-    } else if (key.ctrl && input === 'e' && ideContextState) {
+    } else if (
+      key.ctrl &&
+      input === 'e' &&
+      config.getIdeMode() &&
+      ideContextState
+    ) {
       setShowIDEContextDetail((prev) => !prev);
     } else if (key.ctrl && (input === 'c' || input === 'C')) {
       handleExit(ctrlCPressedOnce, setCtrlCPressedOnce, ctrlCTimerRef);
@@ -1008,7 +1014,12 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
                 </Box>
               </Box>
               {showIDEContextDetail && (
-                <IDEContextDetailDisplay ideContext={ideContextState} />
+                <IDEContextDetailDisplay
+                  ideContext={ideContextState}
+                  detectedIdeDisplay={config
+                    .getIdeClient()
+                    .getDetectedIdeDisplayName()}
+                />
               )}
               {showErrorDetails && (
                 <OverflowProvider>
