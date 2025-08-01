@@ -175,16 +175,20 @@ export class LoopDetectionService {
     // To avoid false positives, we detect when we are inside a code block and
     // temporarily disable loop detection.
     const numFences = (content.match(/```/g) ?? []).length;
-    if (numFences) {
-      // Reset tracking when a code fence is detected to avoid analyzing content
-      // that spans across code block boundaries.
-      this.resetContentTracking();
-    }
-
+    
+    // 只在代码块状态改变时才重置跟踪
     const wasInCodeBlock = this.inCodeBlock;
-    this.inCodeBlock =
-      numFences % 2 === 0 ? this.inCodeBlock : !this.inCodeBlock;
-    if (wasInCodeBlock) {
+    if (numFences > 0) {
+      this.inCodeBlock = numFences % 2 === 0 ? this.inCodeBlock : !this.inCodeBlock;
+      
+      // 只有当从代码块外进入代码块时才重置
+      if (!wasInCodeBlock && this.inCodeBlock) {
+        this.resetContentTracking(false); // 不重置历史，只重置统计
+      }
+    }
+    
+    // 在代码块内时跳过检测
+    if (this.inCodeBlock) {
       return false;
     }
 
@@ -341,8 +345,9 @@ export class LoopDetectionService {
       return false;
     }
 
+    // 改进的句子分割正则，处理更多边界情况
     const completeSentences =
-      this.partialSentenceContent.match(/[^.!?]+[.!?]+(?=\s|$)/g) || [];
+      this.partialSentenceContent.match(/[^.!?]*[.!?]+/g) || [];
     if (completeSentences.length === 0) {
       return false;
     }
@@ -354,8 +359,8 @@ export class LoopDetectionService {
 
     for (const sentence of completeSentences) {
       const trimmedSentence = sentence.trim();
-      if (trimmedSentence === '') {
-        continue;
+      if (trimmedSentence === '' || trimmedSentence.length < 5) {
+        continue; // 忽略空句子和太短的句子
       }
 
       if (this.lastRepeatedSentence === trimmedSentence) {
@@ -542,24 +547,36 @@ If you try to use tools or return anything other than the specified JSON format,
       return false; // 历史不够多，无法判断
     }
 
-    // 检查最近的助手回复是否有重复模式
-    const lastThreeTexts = assistantTexts.slice(-3);
-    const sentences = lastThreeTexts.join(' ').match(/[^.!?]+[.!?]+/g) || [];
+    // 使用统一的句子检测逻辑
+    return this.detectRepeatedContent(assistantTexts.join(' '), 3);
+  }
+
+  /**
+   * 统一的重复内容检测方法
+   * @param content 要检测的内容
+   * @param threshold 重复阈值
+   * @returns 是否检测到重复
+   */
+  private detectRepeatedContent(content: string, threshold: number): boolean {
+    // 使用改进的句子分割
+    const sentences = content.match(/[^.!?]*[.!?]+/g) || [];
     
-    // 统计句子重复
+    // 统计句子重复，使用相似度检测而不是完全匹配
     const sentenceCount = new Map<string, number>();
     for (const sentence of sentences) {
       const trimmed = sentence.trim();
       if (trimmed.length > 10) { // 忽略太短的句子
-        sentenceCount.set(trimmed, (sentenceCount.get(trimmed) || 0) + 1);
+        // 简单的相似度检测：去除多余空格和标点差异
+        const normalized = trimmed.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:!?]+$/, '');
+        sentenceCount.set(normalized, (sentenceCount.get(normalized) || 0) + 1);
       }
     }
 
     // 检查是否有句子重复超过阈值
     for (const [sentence, count] of sentenceCount) {
-      if (count >= 3) {
+      if (count >= threshold) {
         if (this.config.getDebugMode()) {
-          console.warn('Fallback loop detection: repeated sentence detected:', sentence);
+          console.warn('Fallback loop detection: repeated content detected:', sentence);
         }
         logLoopDetected(
           this.config,
@@ -582,6 +599,7 @@ If you try to use tools or return anything other than the specified JSON format,
     this.resetLlmCheckTracking();
     this.resetSentenceTracking();
     this.loopDetected = false;
+    this.inCodeBlock = false; // 重置代码块状态
   }
 
   private resetToolCallCount(): void {
