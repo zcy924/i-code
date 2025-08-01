@@ -138,8 +138,10 @@ describe('useSlashCommandProcessor', () => {
           mockOpenAuthDialog,
           vi.fn(), // openEditorDialog
           vi.fn(), // openModelDialog
-          vi.fn(), // toggleCorgiMode,
-    );
+          vi.fn(), // toggleCorgiMode
+          vi.fn(), // openPrivacyNotice
+          vi.fn(), // toggleVimEnabled
+        );
 
     return result;
   };

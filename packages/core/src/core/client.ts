@@ -540,37 +540,46 @@ export class GeminiClient {
       } catch (parseError) {
         // 尝试清理和修复常见的格式问题
         let cleanedText = text.trim();
-        
+
         // 移除可能的 markdown 代码块
-        const jsonBlockMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        const jsonBlockMatch = cleanedText.match(
+          /```(?:json)?\s*([\s\S]*?)\s*```/,
+        );
         if (jsonBlockMatch) {
           cleanedText = jsonBlockMatch[1].trim();
         }
-        
+
         // 移除前导/尾随的非 JSON 内容，提取 JSON 对象
         const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           cleanedText = jsonMatch[0];
         }
-        
+
         try {
           return JSON.parse(cleanedText);
         } catch (_secondParseError) {
           // 如果JSON解析失败，尝试用正则提取reasoning和next_speaker字段
           try {
-            const reasoningMatch = text.match(/"reasoning"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
-            const nextSpeakerMatch = text.match(/"next_speaker"\s*:\s*"([^"]+)"/);
-            
+            const reasoningMatch = text.match(
+              /"reasoning"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/,
+            );
+            const nextSpeakerMatch = text.match(
+              /"next_speaker"\s*:\s*"([^"]+)"/,
+            );
+
             if (reasoningMatch && nextSpeakerMatch) {
               return {
-                reasoning: reasoningMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\'),
-                next_speaker: nextSpeakerMatch[1]
+                reasoning: reasoningMatch[1]
+                  .replace(/\\"/g, '"')
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\\\/g, '\\'),
+                next_speaker: nextSpeakerMatch[1],
               };
             }
           } catch (_regexParseError) {
             // 正则解析也失败了，继续报告错误
           }
-          
+
           // 如果还是失败，报告详细的错误信息
           await reportError(
             parseError,

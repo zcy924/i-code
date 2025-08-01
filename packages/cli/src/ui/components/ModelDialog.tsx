@@ -30,12 +30,12 @@ export const ModelDialog: React.FC<ModelDialogProps> = ({
     if (key.escape || (key.ctrl && input === 'c')) {
       onExit();
     } else if (key.upArrow) {
-      setSelectedModelIndex((prev) => 
-        prev > 0 ? prev - 1 : customModels.length - 1
+      setSelectedModelIndex((prev) =>
+        prev > 0 ? prev - 1 : customModels.length - 1,
       );
     } else if (key.downArrow) {
-      setSelectedModelIndex((prev) => 
-        prev < customModels.length - 1 ? prev + 1 : 0
+      setSelectedModelIndex((prev) =>
+        prev < customModels.length - 1 ? prev + 1 : 0,
       );
     } else if (key.return) {
       if (customModels.length > 0) {
@@ -47,25 +47,21 @@ export const ModelDialog: React.FC<ModelDialogProps> = ({
   // 如果没有自定义模型，显示提示信息
   if (customModels.length === 0) {
     return (
-      <Box 
-        borderStyle="round" 
+      <Box
+        borderStyle="round"
         borderColor={Colors.AccentYellow}
         paddingX={1}
         flexDirection="column"
       >
-        <Text color={Colors.AccentYellow}>
-          No custom models configured.
-        </Text>
-        <Text>
-          Please configure custom models in your settings file.
-        </Text>
+        <Text color={Colors.AccentYellow}>No custom models configured.</Text>
+        <Text>Please configure custom models in your settings file.</Text>
       </Box>
     );
   }
 
   return (
-    <Box 
-      borderStyle="round" 
+    <Box
+      borderStyle="round"
       borderColor={Colors.AccentBlue}
       paddingX={1}
       flexDirection="column"
@@ -76,7 +72,11 @@ export const ModelDialog: React.FC<ModelDialogProps> = ({
       <Box flexDirection="column" marginTop={1}>
         {customModels.map((model, index) => (
           <Box key={model.name}>
-            <Text color={index === selectedModelIndex ? Colors.AccentBlue : undefined}>
+            <Text
+              color={
+                index === selectedModelIndex ? Colors.AccentBlue : undefined
+              }
+            >
               {index === selectedModelIndex ? '▶ ' : '  '}
               {model.name} ({model.model})
             </Text>
@@ -84,9 +84,7 @@ export const ModelDialog: React.FC<ModelDialogProps> = ({
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>
-          ↑/↓ to navigate, ↵ to select, Esc to cancel
-        </Text>
+        <Text dimColor>↑/↓ to navigate, ↵ to select, Esc to cancel</Text>
       </Box>
     </Box>
   );

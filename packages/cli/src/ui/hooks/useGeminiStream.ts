@@ -142,7 +142,11 @@ export const useGeminiStream = (
     [toolCalls],
   );
 
-  const loopDetectedRef = useRef(false);
+  const loopDetectedRef = useRef<{
+    detected: boolean;
+    reason?: string;
+    suggestion?: string;
+  }>({ detected: false });
 
   const onExec = useCallback(async (done: Promise<void>) => {
     setIsResponding(true);
@@ -512,15 +516,23 @@ export const useGeminiStream = (
     [addItem, config],
   );
 
-  const handleLoopDetectedEvent = useCallback(() => {
-    addItem(
-      {
-        type: 'info',
-        text: `A potential loop was detected. This can happen due to repetitive tool calls or other model behavior. The request has been halted.`,
-      },
-      Date.now(),
-    );
-  }, [addItem]);
+  const handleLoopDetectedEvent = useCallback(
+    (suggestion?: string) => {
+      const baseMessage = `A potential loop was detected. This can happen due to repetitive tool calls or other model behavior. The request has been halted.`;
+      const enhancedMessage = suggestion
+        ? `${baseMessage}\n\nSuggestion: ${suggestion}\n\nTo continue effectively:\n• Try a different approach\n• Be more specific in your request\n• Or restart the conversation if needed`
+        : baseMessage;
+
+      addItem(
+        {
+          type: 'info',
+          text: enhancedMessage,
+        },
+        Date.now(),
+      );
+    },
+    [addItem],
+  );
 
   const processGeminiStreamEvents = useCallback(
     async (
@@ -568,9 +580,12 @@ export const useGeminiStream = (
             );
             break;
           case ServerGeminiEventType.LoopDetected:
-            // handle later because we want to move pending history to history
-            // before we add loop detected message to history
-            loopDetectedRef.current = true;
+            // Store loop detection info for later processing
+            loopDetectedRef.current = {
+              detected: true,
+              reason: event.value?.reason,
+              suggestion: event.value?.suggestion,
+            };
             break;
           default: {
             // enforces exhaustive switch-case
@@ -664,9 +679,10 @@ export const useGeminiStream = (
           addItem(pendingHistoryItemRef.current, userMessageTimestamp);
           setPendingHistoryItem(null);
         }
-        if (loopDetectedRef.current) {
-          loopDetectedRef.current = false;
-          handleLoopDetectedEvent();
+        if (loopDetectedRef.current?.detected) {
+          const loopInfo = loopDetectedRef.current;
+          loopDetectedRef.current = { detected: false };
+          handleLoopDetectedEvent(loopInfo.suggestion);
         }
       } catch (error: unknown) {
         if (error instanceof UnauthorizedError) {

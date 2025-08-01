@@ -266,28 +266,32 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   const closeModelDialog = useCallback(() => {
     setIsModelDialogOpen(false);
   }, []);
-  const handleModelSelect = useCallback(async (modelName: string) => {
-    try {
-      await config.switchToCustomModel(modelName);
-      setIsModelDialogOpen(false);
-      addItem(
-        {
-          type: MessageType.INFO,
-          text: `Switched to model: ${modelName}`,
-        },
-        Date.now(),
-      );
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      addItem(
-        {
-          type: MessageType.ERROR,
-          text: `Failed to switch model: ${errorMessage}`,
-        },
-        Date.now(),
-      );
-    }
-  }, [config, addItem]);
+  const handleModelSelect = useCallback(
+    async (modelName: string) => {
+      try {
+        await config.switchToCustomModel(modelName);
+        setIsModelDialogOpen(false);
+        addItem(
+          {
+            type: MessageType.INFO,
+            text: `Switched to model: ${modelName}`,
+          },
+          Date.now(),
+        );
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        addItem(
+          {
+            type: MessageType.ERROR,
+            text: `Failed to switch model: ${errorMessage}`,
+          },
+          Date.now(),
+        );
+      }
+    },
+    [config, addItem],
+  );
 
   const toggleCorgiMode = useCallback(() => {
     setCorgiMode((prev) => !prev);

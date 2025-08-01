@@ -446,12 +446,12 @@ export async function loadCliConfig(
     ideModeFeature,
     ideClient,
   });
-  
+
   // 设置自定义模型配置
   if (settings.customModels) {
     config.setCustomModels(settings.customModels);
   }
-  
+
   return config;
 }
 

@@ -76,22 +76,25 @@ export function createContentGeneratorConfig(
   const googleApiKey = process.env.GOOGLE_API_KEY || undefined;
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT || undefined;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION || undefined;
-  
+
   // 获取当前选择的模型名称
   const selectedModelName = config.getSelectedCustomModel();
-  
+
   // 获取所有自定义模型配置
   const customModels = config.getCustomModels();
-  
+
   // 查找选中的自定义模型配置
   const selectedCustomModel = customModels?.find(
-    model => model.name === selectedModelName
+    (model) => model.name === selectedModelName,
   );
-  
+
   // 使用选中的自定义模型配置或环境变量中的默认配置
-  const customApiKey = selectedCustomModel?.apiKey || process.env.CUSTOM_API_KEY || undefined;
-  const customEndpoint = selectedCustomModel?.endpoint || process.env.CUSTOM_ENDPOINT || undefined;
-  const customModel = selectedCustomModel?.model || process.env.CUSTOM_MODEL || undefined;
+  const customApiKey =
+    selectedCustomModel?.apiKey || process.env.CUSTOM_API_KEY || undefined;
+  const customEndpoint =
+    selectedCustomModel?.endpoint || process.env.CUSTOM_ENDPOINT || undefined;
+  const customModel =
+    selectedCustomModel?.model || process.env.CUSTOM_MODEL || undefined;
 
   // Use runtime model from config if available; otherwise, fall back to parameter or default
   const effectiveModel = config.getModel() || DEFAULT_GEMINI_MODEL;

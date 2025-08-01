@@ -93,6 +93,9 @@ export class OpenAIContentGenerator implements ContentGenerator {
     }
   > = new Map();
 
+  // Accumulator for XML-style tool calls in text content
+  private xmlToolCallBuffer: string = '';
+
   constructor(apiKey: string, model: string, baseURL: string, config: Config) {
     this.model = model;
     this.config = config;
@@ -179,14 +182,19 @@ export class OpenAIContentGenerator implements ContentGenerator {
       };
 
       // Handle JSON schema if provided
-      if (request.config?.responseSchema && request.config?.responseMimeType === 'application/json') {
+      if (
+        request.config?.responseSchema &&
+        request.config?.responseMimeType === 'application/json'
+      ) {
         createParams.response_format = {
           type: 'json_schema',
           json_schema: {
             name: 'response',
-            schema: this.convertGeminiSchemaToOpenAI(request.config.responseSchema),
-            strict: true
-          }
+            schema: this.convertGeminiSchemaToOpenAI(
+              request.config.responseSchema,
+            ),
+            strict: true,
+          },
         };
       }
 
@@ -300,14 +308,19 @@ export class OpenAIContentGenerator implements ContentGenerator {
       };
 
       // Handle JSON schema if provided
-      if (request.config?.responseSchema && request.config?.responseMimeType === 'application/json') {
+      if (
+        request.config?.responseSchema &&
+        request.config?.responseMimeType === 'application/json'
+      ) {
         createParams.response_format = {
           type: 'json_schema',
           json_schema: {
             name: 'response',
-            schema: this.convertGeminiSchemaToOpenAI(request.config.responseSchema),
-            strict: true
-          }
+            schema: this.convertGeminiSchemaToOpenAI(
+              request.config.responseSchema,
+            ),
+            strict: true,
+          },
         };
       }
 
@@ -481,8 +494,9 @@ export class OpenAIContentGenerator implements ContentGenerator {
   private async *streamGenerator(
     stream: AsyncIterable<ChatCompletionChunk>,
   ): AsyncGenerator<GenerateContentResponse> {
-    // Reset the accumulator for each new stream
+    // Reset the accumulators for each new stream
     this.streamingToolCalls.clear();
+    this.xmlToolCallBuffer = '';
 
     for await (const chunk of stream) {
       yield this.convertStreamChunkToGeminiFormat(chunk);
@@ -639,7 +653,7 @@ export class OpenAIContentGenerator implements ContentGenerator {
   }
 
   private convertGeminiSchemaToOpenAI(
-    geminiSchema: Record<string, unknown> | unknown
+    geminiSchema: Record<string, unknown> | unknown,
   ): Record<string, unknown> {
     if (!geminiSchema || typeof geminiSchema !== 'object') {
       return geminiSchema as Record<string, unknown>;
@@ -1259,12 +1273,68 @@ export class OpenAIContentGenerator implements ContentGenerator {
     if (choice) {
       const parts: Part[] = [];
 
-      // Handle text content
+      // Handle text content - check for XML-style tool calls
       if (choice.delta?.content) {
-        parts.push({ text: choice.delta.content });
+        const content = choice.delta.content;
+
+        // Accumulate content in buffer for XML tool call parsing
+        this.xmlToolCallBuffer += content;
+
+        // Check for complete XML tool calls in the buffer
+        const toolCallMatches = this.extractXmlToolCalls(
+          this.xmlToolCallBuffer,
+        );
+
+        if (toolCallMatches.length > 0) {
+          // Process extracted tool calls
+          for (const match of toolCallMatches) {
+            try {
+              const toolCallData = JSON.parse(match.json);
+
+              // Generate a unique tool call ID
+              const toolCallId = `xml_call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+              parts.push({
+                functionCall: {
+                  id: toolCallId,
+                  name: toolCallData.name || '',
+                  args: toolCallData.arguments || {},
+                },
+              });
+            } catch (error) {
+              console.error('Failed to parse XML tool call JSON:', error);
+              // If parsing fails, treat as regular text
+              parts.push({ text: match.fullMatch });
+            }
+          }
+
+          // Remove processed tool calls from buffer and keep remaining text
+          let remainingBuffer = this.xmlToolCallBuffer;
+          for (const match of toolCallMatches) {
+            remainingBuffer = remainingBuffer.replace(match.fullMatch, '');
+          }
+          this.xmlToolCallBuffer = remainingBuffer;
+
+          // Add any remaining text as regular content
+          if (remainingBuffer.trim()) {
+            parts.push({ text: remainingBuffer });
+          }
+        } else {
+          // No complete tool calls found, add as regular text
+          // But don't add to parts yet if we might be in the middle of a tool call
+          const hasPartialToolCall =
+            this.xmlToolCallBuffer.includes('<tool_call>') &&
+            !this.xmlToolCallBuffer.includes('</tool_call>');
+
+          if (!hasPartialToolCall) {
+            parts.push({ text: content });
+            this.xmlToolCallBuffer = ''; // Clear buffer if no partial tool call
+          }
+          // If we have a partial tool call, keep accumulating in buffer
+        }
       }
 
-      // Handle tool calls - only accumulate during streaming, emit when complete
+      // Handle standard OpenAI tool calls - keep existing logic for compatibility
       if (choice.delta?.tool_calls) {
         for (const toolCall of choice.delta.tool_calls) {
           const index = toolCall.index ?? 0;
@@ -1289,11 +1359,9 @@ export class OpenAIContentGenerator implements ContentGenerator {
         }
       }
 
-      // Only emit function calls when streaming is complete (finish_reason is present)
+      // Emit accumulated standard tool calls when streaming is complete
       if (choice.finish_reason) {
         for (const [, accumulatedCall] of this.streamingToolCalls) {
-          // TODO: Add back id once we have a way to generate tool_call_id from the VLLM parser.
-          // if (accumulatedCall.id && accumulatedCall.name) {
           if (accumulatedCall.name) {
             let args: Record<string, unknown> = {};
             if (accumulatedCall.arguments) {
@@ -1318,6 +1386,7 @@ export class OpenAIContentGenerator implements ContentGenerator {
         }
         // Clear all accumulated tool calls
         this.streamingToolCalls.clear();
+        this.xmlToolCallBuffer = ''; // Clear XML buffer on completion
       }
 
       response.candidates = [
@@ -1372,6 +1441,36 @@ export class OpenAIContentGenerator implements ContentGenerator {
     }
 
     return response;
+  }
+
+  /**
+   * Extract XML-style tool calls from accumulated text buffer
+   * Returns array of matches with full XML block and extracted JSON
+   */
+  private extractXmlToolCalls(buffer: string): Array<{
+    fullMatch: string;
+    json: string;
+  }> {
+    const matches: Array<{ fullMatch: string; json: string }> = [];
+
+    // Regex to match complete tool call blocks: <tool_call>...JSON...</tool_call>
+    const toolCallRegex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
+
+    let match;
+    while ((match = toolCallRegex.exec(buffer)) !== null) {
+      const fullMatch = match[0];
+      const jsonContent = match[1].trim();
+
+      // Validate that the content looks like JSON
+      if (jsonContent.startsWith('{') && jsonContent.endsWith('}')) {
+        matches.push({
+          fullMatch,
+          json: jsonContent,
+        });
+      }
+    }
+
+    return matches;
   }
 
   /**

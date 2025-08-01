@@ -175,18 +175,19 @@ export class LoopDetectionService {
     // To avoid false positives, we detect when we are inside a code block and
     // temporarily disable loop detection.
     const numFences = (content.match(/```/g) ?? []).length;
-    
+
     // 只在代码块状态改变时才重置跟踪
     const wasInCodeBlock = this.inCodeBlock;
     if (numFences > 0) {
-      this.inCodeBlock = numFences % 2 === 0 ? this.inCodeBlock : !this.inCodeBlock;
-      
+      this.inCodeBlock =
+        numFences % 2 === 0 ? this.inCodeBlock : !this.inCodeBlock;
+
       // 只有当从代码块外进入代码块时才重置
       if (!wasInCodeBlock && this.inCodeBlock) {
         this.resetContentTracking(false); // 不重置历史，只重置统计
       }
     }
-    
+
     // 在代码块内时跳过检测
     if (this.inCodeBlock) {
       return false;
@@ -196,13 +197,13 @@ export class LoopDetectionService {
     this.partialSentenceContent += content;
 
     this.truncateAndUpdate();
-    
+
     // 首先尝试基于块的检测
     const blockDetected = this.analyzeContentChunksForLoop();
     if (blockDetected) {
       return true;
     }
-    
+
     // 同时进行基于句子的检测作为备用
     return this.checkSentenceBasedLoop();
   }
@@ -353,9 +354,11 @@ export class LoopDetectionService {
     }
 
     const lastSentence = completeSentences[completeSentences.length - 1];
-    const lastCompleteIndex = this.partialSentenceContent.lastIndexOf(lastSentence);
+    const lastCompleteIndex =
+      this.partialSentenceContent.lastIndexOf(lastSentence);
     const endOfLastSentence = lastCompleteIndex + lastSentence.length;
-    this.partialSentenceContent = this.partialSentenceContent.slice(endOfLastSentence);
+    this.partialSentenceContent =
+      this.partialSentenceContent.slice(endOfLastSentence);
 
     for (const sentence of completeSentences) {
       const trimmedSentence = sentence.trim();
@@ -384,152 +387,310 @@ export class LoopDetectionService {
     return false;
   }
 
+  /**
+   * Enhanced LLM-based self-reflection check that analyzes the conversation
+   * for unproductive patterns and suggests corrective actions.
+   */
   private async checkForLoopWithLLM(signal: AbortSignal) {
     const recentHistory = this.config
       .getGeminiClient()
       .getHistory()
       .slice(-LLM_LOOP_CHECK_HISTORY_COUNT);
 
-    const prompt = `You are a sophisticated AI diagnostic agent specializing in identifying when a conversational AI is stuck in an unproductive state. Your task is to analyze the provided conversation history and determine if the assistant has ceased to make meaningful progress.
+    const prompt = `You are an AI self-analysis system. Analyze this conversation to detect if the assistant is stuck in an unproductive loop.
 
-An unproductive state is characterized by one or more of the following patterns over the last 5 or more assistant turns:
+CONVERSATION HISTORY:
+${recentHistory.map((turn, i) => `Turn ${i + 1} (${turn.role}): ${JSON.stringify(turn.parts)}`).join('\n')}
 
-Repetitive Actions: The assistant repeats the same tool calls or conversational responses a decent number of times. This includes simple loops (e.g., tool_A, tool_A, tool_A) and alternating patterns (e.g., tool_A, tool_B, tool_A, tool_B, ...).
+ANALYSIS FRAMEWORK:
+1. INTENTION-EXECUTION GAPS: Is the assistant expressing intentions to perform actions (like "让我查看", "Let me read") but not actually executing the corresponding tool calls?
 
-Cognitive Loop: The assistant seems unable to determine the next logical step. It might express confusion, repeatedly ask the same questions, or generate responses that don't logically follow from the previous turns, indicating it's stuck and not advancing the task.
+2. REPETITIVE RESPONSES: Is the assistant generating similar text responses without meaningful variation or progress?
 
-Crucially, differentiate between a true unproductive state and legitimate, incremental progress.
-For example, a series of 'tool_A' or 'tool_B' tool calls that make small, distinct changes to the same file (like adding docstrings to functions one by one) is considered forward progress and is NOT a loop. A loop would be repeatedly replacing the same text with the same content, or cycling between a small set of files with no net change.
+3. LACK OF FORWARD PROGRESS: Is the assistant failing to advance toward solving the user's actual request over multiple turns?
 
-CRITICAL OUTPUT FORMAT REQUIREMENTS:
-You MUST respond with ONLY a valid JSON object. NO additional text, explanations, markdown blocks, or formatting is allowed.
-The JSON must contain exactly these two fields with these exact names:
-- "reasoning": a string explaining your analysis
-- "confidence": a number between 0.0 and 1.0
+4. PATTERN RECOGNITION: Are there any other unproductive behavioral patterns (like repeatedly asking the same questions, cycling between the same few responses, etc.)?
 
-REQUIRED OUTPUT FORMAT (copy this structure exactly):
+CRITICAL EVALUATION CRITERIA:
+- A true loop exists when there's NO meaningful progress toward the user's goal
+- Repetitive tool calls that make incremental progress are NOT loops
+- Expressing an intention without immediate execution IS a loop indicator
+- Responses that are semantically identical across multiple turns indicate a loop
+
+You MUST respond with ONLY this exact JSON format:
 {
-  "reasoning": "Your detailed analysis of whether the conversation shows repetitive patterns without progress",
-  "confidence": 0.5
+  "reasoning": "Detailed analysis of conversation patterns and whether they indicate an unproductive loop",
+  "confidence": 0.85,
+  "suggestedAction": "Specific recommendation for breaking the loop if one exists"
 }
 
-VALIDATION RULES:
-- reasoning: MUST be a string, cannot be null or empty
-- confidence: MUST be a number between 0.0 and 1.0 (inclusive)
-- Use exactly these field names: "reasoning" and "confidence"
-- No additional fields allowed
-- No text outside the JSON object
-- No markdown code blocks like \`\`\`json
+Requirements:
+- reasoning: String analysis (20-200 characters)
+- confidence: Number 0.0-1.0 (confidence that a loop exists)
+- suggestedAction: String with specific next step recommendation`;
 
-EXAMPLES OF CORRECT RESPONSES:
-{"reasoning": "The assistant has made 8 consecutive identical tool calls without any variation in parameters or outcomes, indicating a clear unproductive loop.", "confidence": 0.95}
-
-{"reasoning": "The assistant is making different tool calls with varying parameters and each call produces different results, showing clear forward progress.", "confidence": 0.1}
-
-Remember: ONLY return the JSON object. Nothing else.`;
-    const systemInstruction = `You are ONLY a diagnostic agent. Your SOLE function is to analyze conversation patterns and return JSON.
-
-CRITICAL: You are NOT a coding assistant. You CANNOT use tools. You CANNOT execute functions. 
-You can ONLY analyze text and return a JSON object with "reasoning" and "confidence" fields.
-
-If you try to use tools or return anything other than the specified JSON format, you will fail your task.`;
+    const systemInstruction = `You are a specialized diagnostic AI that ONLY analyzes conversation patterns. 
+You CANNOT use tools or execute functions. 
+You MUST return exactly the specified JSON format with reasoning, confidence, and suggestedAction fields.
+Higher confidence (>0.8) means you're certain an unproductive loop exists.`;
 
     const contents = [
       { role: 'system', parts: [{ text: systemInstruction }] },
       ...recentHistory,
       { role: 'user', parts: [{ text: prompt }] },
     ];
+
     const schema: SchemaUnion = {
       type: Type.OBJECT,
       properties: {
         reasoning: {
           type: Type.STRING,
-          description:
-            'Your reasoning on if the conversation is looping without forward progress.',
-          minLength: 10,
-          maxLength: 500,
+          description: 'Analysis of conversation patterns and loop detection',
+          minLength: 20,
+          maxLength: 200,
         },
         confidence: {
           type: Type.NUMBER,
-          description:
-            'A number between 0.0 and 1.0 representing your confidence that the conversation is in an unproductive state.',
+          description: 'Confidence that an unproductive loop exists (0.0-1.0)',
           minimum: 0.0,
           maximum: 1.0,
         },
+        suggestedAction: {
+          type: Type.STRING,
+          description: 'Specific recommendation for breaking the loop',
+          minLength: 10,
+          maxLength: 100,
+        },
       },
-      required: ['reasoning', 'confidence'],
-      additionalProperties: false, // 禁止额外属性
+      required: ['reasoning', 'confidence', 'suggestedAction'],
+      additionalProperties: false,
     };
+
     let result;
     try {
       result = await this.config
         .getGeminiClient()
         .generateJson(contents, schema, signal, DEFAULT_GEMINI_FLASH_MODEL);
     } catch (e) {
-      // LLM检测失败，触发基于句子的备用检测
-      this.config.getDebugMode() ? console.error('LLM loop detection failed, falling back to sentence-based detection:', e) : console.debug('LLM loop detection failed, using fallback method');
+      if (this.config.getDebugMode()) {
+        console.error('Enhanced LLM loop detection failed:', e);
+      }
       return this.performFallbackLoopDetection();
     }
 
-    if (typeof result.confidence === 'number') {
-      // 验证confidence值在有效范围内
-      const confidence = Math.max(0.0, Math.min(1.0, result.confidence));
-      
-      if (confidence > 0.9) {
-        if (typeof result.reasoning === 'string' && result.reasoning) {
-          console.warn(result.reasoning);
+    // Validate and process the result
+    if (
+      typeof result.confidence === 'number' &&
+      result.confidence >= 0 &&
+      result.confidence <= 1
+    ) {
+      if (result.confidence > 0.8) {
+        // High confidence loop detected
+        console.warn(
+          `Loop detected with ${(result.confidence * 100).toFixed(1)}% confidence: ${result.reasoning}`,
+        );
+        if (result.suggestedAction) {
+          console.warn(`Suggested action: ${result.suggestedAction}`);
         }
+
         logLoopDetected(
           this.config,
           new LoopDetectedEvent(LoopType.LLM_DETECTED_LOOP, this.promptId),
         );
         return true;
       } else {
+        // Adjust check interval based on confidence
         this.llmCheckInterval = Math.round(
           MIN_LLM_CHECK_INTERVAL +
             (MAX_LLM_CHECK_INTERVAL - MIN_LLM_CHECK_INTERVAL) *
-              (1 - confidence),
+              (1 - result.confidence),
         );
-      }
-    } else {
-      // 如果confidence不是数字，尝试从reasoning中提取或设默认值
-      if (this.config.getDebugMode()) {
-        console.warn('Invalid confidence value received from loop detection LLM:', result);
-      }
-      
-      // 尝试从reasoning字符串中提取confidence（如果模型返回了描述性文本）
-      if (typeof result.reasoning === 'string') {
-        const confidenceMatch = result.reasoning.match(/confidence[:\s]*([0-9]*\.?[0-9]+)/i);
-        if (confidenceMatch) {
-          const extractedConfidence = parseFloat(confidenceMatch[1]);
-          if (!isNaN(extractedConfidence) && extractedConfidence >= 0 && extractedConfidence <= 1) {
-            if (extractedConfidence > 0.9) {
-              console.warn('Loop detected based on extracted confidence:', result.reasoning);
-              logLoopDetected(
-                this.config,
-                new LoopDetectedEvent(LoopType.LLM_DETECTED_LOOP, this.promptId),
-              );
-              return true;
-            }
-          }
+
+        if (this.config.getDebugMode() && result.confidence > 0.5) {
+          console.log(
+            `Moderate loop risk detected: ${result.reasoning} (confidence: ${result.confidence})`,
+          );
         }
       }
-      
-      // 最后的备用方案：使用基于句子的检测
+    } else {
+      if (this.config.getDebugMode()) {
+        console.warn('Invalid confidence value from loop detection:', result);
+      }
       return this.performFallbackLoopDetection();
     }
+
     return false;
   }
 
   /**
-   * 当LLM检测失败时的备用循环检测方法
-   * 基于对话历史进行句子级别的重复检测
+   * Analyzes AI response for intention-execution alignment to prevent loops
+   * where the AI states it will do something but doesn't actually do it.
    */
+  async analyzeIntentionExecutionGap(
+    responseText: string,
+    hasToolCalls: boolean,
+    conversationHistory: Array<{
+      role: string;
+      parts?: Array<{ text?: string }>;
+    }>,
+  ): Promise<{ hasGap: boolean; suggestion?: string }> {
+    // Quick pattern detection for common intention phrases
+    const intentionPatterns = [
+      /让我查看|让我读取|让我搜索|让我分析/i,
+      /let me check|let me read|let me search|let me analyze/i,
+      /i'll check|i'll read|i'll search|i'll analyze/i,
+      /now i'll|first i'll|next i'll/i,
+    ];
+
+    const hasIntention = intentionPatterns.some((pattern) =>
+      pattern.test(responseText),
+    );
+
+    if (hasIntention && !hasToolCalls) {
+      // Detected intention without execution - this is a strong loop indicator
+      const recentHistory = conversationHistory.slice(-3);
+
+      // Use LLM to analyze the specific gap and suggest action
+      const analysisPrompt = `Analyze this AI response for intention-execution gaps:
+
+RESPONSE TEXT: "${responseText}"
+HAS TOOL CALLS: ${hasToolCalls}
+RECENT CONTEXT: ${JSON.stringify(recentHistory)}
+
+The AI expressed an intention to perform an action but didn't execute it. 
+
+Respond with JSON:
+{
+  "hasGap": true,
+  "toolNeeded": "specific tool name that should have been called",
+  "parameters": "likely parameters for the tool call",
+  "suggestion": "specific corrective action to take"
+}`;
+
+      try {
+        const result = await this.config.getGeminiClient().generateJson(
+          [{ role: 'user', parts: [{ text: analysisPrompt }] }],
+          {
+            type: Type.OBJECT,
+            properties: {
+              hasGap: { type: Type.BOOLEAN },
+              toolNeeded: { type: Type.STRING },
+              parameters: { type: Type.STRING },
+              suggestion: { type: Type.STRING, maxLength: 100 },
+            },
+            required: ['hasGap', 'suggestion'],
+          },
+          new AbortController().signal,
+          DEFAULT_GEMINI_FLASH_MODEL,
+        );
+
+        if (result.hasGap) {
+          return {
+            hasGap: true,
+            suggestion:
+              (typeof result.suggestion === 'string'
+                ? result.suggestion
+                : '') || 'Execute the intended action immediately',
+          };
+        }
+      } catch (_error) {
+        // Fallback to simple detection
+        return {
+          hasGap: true,
+          suggestion: 'Execute the tool call you mentioned in your response',
+        };
+      }
+    }
+
+    return { hasGap: false };
+  }
+
+  /**
+   * Enhanced method that combines all loop detection approaches
+   */
+  async comprehensiveLoopCheck(
+    responseText: string,
+    hasToolCalls: boolean,
+    conversationHistory: Array<{
+      role: string;
+      parts?: Array<{ text?: string }>;
+    }>,
+    signal: AbortSignal,
+  ): Promise<{ isLoop: boolean; reason?: string; suggestion?: string }> {
+    // 1. Check intention-execution gap
+    const intentionGap = await this.analyzeIntentionExecutionGap(
+      responseText,
+      hasToolCalls,
+      conversationHistory,
+    );
+
+    if (intentionGap.hasGap) {
+      return {
+        isLoop: true,
+        reason: 'Intention-execution gap detected',
+        suggestion: intentionGap.suggestion,
+      };
+    }
+
+    // 2. Check for repetitive content
+    const recentResponses = conversationHistory
+      .filter((turn) => turn.role === 'model')
+      .slice(-3)
+      .map((turn) => turn.parts?.[0]?.text || '');
+
+    if (recentResponses.length >= 2) {
+      const similarity = this.calculateResponseSimilarity(
+        responseText,
+        recentResponses,
+      );
+      if (similarity > 0.8) {
+        return {
+          isLoop: true,
+          reason: 'High response similarity detected',
+          suggestion: 'Try a completely different approach to the problem',
+        };
+      }
+    }
+
+    // 3. Perform LLM-based analysis for complex patterns
+    const llmResult = await this.checkForLoopWithLLM(signal);
+    if (llmResult) {
+      return {
+        isLoop: true,
+        reason: 'LLM detected unproductive conversation pattern',
+        suggestion: 'Change approach based on conversation analysis',
+      };
+    }
+
+    return { isLoop: false };
+  }
+
+  /**
+   * Simple similarity calculation for responses
+   */
+  private calculateResponseSimilarity(
+    current: string,
+    previous: string[],
+  ): number {
+    if (previous.length === 0) return 0;
+
+    const currentWords = current.toLowerCase().split(/\s+/);
+    const maxSimilarity = Math.max(
+      ...previous.map((prev) => {
+        const prevWords = prev.toLowerCase().split(/\s+/);
+        const intersection = currentWords.filter((word) =>
+          prevWords.includes(word),
+        );
+        return (
+          intersection.length / Math.max(currentWords.length, prevWords.length)
+        );
+      }),
+    );
+
+    return maxSimilarity;
+  }
   private performFallbackLoopDetection(): boolean {
-    const recentHistory = this.config
-      .getGeminiClient()
-      .getHistory()
-      .slice(-10); // 检查最近10轮对话
+    const recentHistory = this.config.getGeminiClient().getHistory().slice(-10); // 检查最近10轮对话
 
     // 提取所有助手的文本内容
     const assistantTexts: string[] = [];
@@ -560,14 +721,18 @@ If you try to use tools or return anything other than the specified JSON format,
   private detectRepeatedContent(content: string, threshold: number): boolean {
     // 使用改进的句子分割
     const sentences = content.match(/[^.!?]*[.!?]+/g) || [];
-    
+
     // 统计句子重复，使用相似度检测而不是完全匹配
     const sentenceCount = new Map<string, number>();
     for (const sentence of sentences) {
       const trimmed = sentence.trim();
-      if (trimmed.length > 10) { // 忽略太短的句子
+      if (trimmed.length > 10) {
+        // 忽略太短的句子
         // 简单的相似度检测：去除多余空格和标点差异
-        const normalized = trimmed.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:!?]+$/, '');
+        const normalized = trimmed
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .replace(/[.,;:!?]+$/, '');
         sentenceCount.set(normalized, (sentenceCount.get(normalized) || 0) + 1);
       }
     }
@@ -576,11 +741,17 @@ If you try to use tools or return anything other than the specified JSON format,
     for (const [sentence, count] of sentenceCount) {
       if (count >= threshold) {
         if (this.config.getDebugMode()) {
-          console.warn('Fallback loop detection: repeated content detected:', sentence);
+          console.warn(
+            'Fallback loop detection: repeated content detected:',
+            sentence,
+          );
         }
         logLoopDetected(
           this.config,
-          new LoopDetectedEvent(LoopType.CHANTING_IDENTICAL_SENTENCES, this.promptId),
+          new LoopDetectedEvent(
+            LoopType.CHANTING_IDENTICAL_SENTENCES,
+            this.promptId,
+          ),
         );
         return true;
       }

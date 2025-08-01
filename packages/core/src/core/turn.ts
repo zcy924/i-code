@@ -143,6 +143,10 @@ export type ServerGeminiFinishedEvent = {
 
 export type ServerGeminiLoopDetectedEvent = {
   type: GeminiEventType.LoopDetected;
+  value?: {
+    reason?: string;
+    suggestion?: string;
+  };
 };
 
 // The original union type, now composed of the individual types
