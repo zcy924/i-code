@@ -8,7 +8,15 @@
       "Bash(npm run typecheck:*)",
       "mcp__ide__executeCode",
       "Bash(node:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(time rg:*)",
+      "Bash(time find:*)",
+      "Bash(git fetch:*)"
     ],
     "deny": []
   }

@@ -742,9 +742,14 @@ export class GeminiClient {
     }
 
     // Don't compress if not forced and we are under the limit.
+    // First, check if this is a custom model with a specified context window
+    const customModel = this.config
+      .getCustomModels()
+      .find((m) => m.model === model);
+    const modelTokenLimit = customModel?.contextWindow ?? tokenLimit(model);
     if (
       !force &&
-      originalTokenCount < this.COMPRESSION_TOKEN_THRESHOLD * tokenLimit(model)
+      originalTokenCount < this.COMPRESSION_TOKEN_THRESHOLD * modelTokenLimit
     ) {
       return null;
     }

@@ -18,6 +18,7 @@ export interface CustomModelConfig {
   apiKey: string;
   endpoint: string;
   model: string;
+  contextWindow?: number;
 }
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
@@ -67,6 +68,7 @@ export interface CustomModelConfig {
   apiKey: string;
   endpoint: string;
   model: string;
+  contextWindow?: number;
 }
 
 export enum ApprovalMode {
@@ -149,6 +151,7 @@ export interface CustomModelConfig {
   apiKey: string;
   endpoint: string;
   model: string;
+  contextWindow?: number;
 }
 
 export enum AuthProviderType {
@@ -162,6 +165,7 @@ export interface CustomModelConfig {
   apiKey: string;
   endpoint: string;
   model: string;
+  contextWindow?: number;
 }
 
 export interface SandboxConfig {
