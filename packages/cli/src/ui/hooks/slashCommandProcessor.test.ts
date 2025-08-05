@@ -90,9 +90,10 @@ describe('useSlashCommandProcessor', () => {
   const mockAddItem = vi.fn();
   const mockClearItems = vi.fn();
   const mockLoadHistory = vi.fn();
-  const mockSetShowHelp = vi.fn();
+  const mockOpenThemeDialog = vi.fn();
   const mockOpenAuthDialog = vi.fn();
   const mockSetQuittingMessages = vi.fn();
+  const mockSetShowHelp = vi.fn();
 
   const mockConfig = {
     getProjectRoot: vi.fn(() => '/mock/cwd'),
@@ -126,22 +127,24 @@ describe('useSlashCommandProcessor', () => {
 
     const { result } = renderHook(() =>
       useSlashCommandProcessor(
-          mockConfig,
-          mockSettings,
-          mockAddItem,
-          mockClearItems,
-          mockLoadHistory,
-          vi.fn(), // refreshStatic
-          mockSetShowHelp,
-          vi.fn(), // onDebugMessage
-          vi.fn(), // openThemeDialog
-          mockOpenAuthDialog,
-          vi.fn(), // openEditorDialog
-          vi.fn(), // openModelDialog
-          vi.fn(), // toggleCorgiMode
-          vi.fn(), // openPrivacyNotice
-          vi.fn(), // toggleVimEnabled
-        );
+        mockConfig,
+        mockSettings,
+        mockAddItem,
+        mockClearItems,
+        mockLoadHistory,
+        vi.fn(), // refreshStatic
+        vi.fn(), // onDebugMessage
+        mockOpenThemeDialog, // openThemeDialog
+        mockOpenAuthDialog,
+        vi.fn(), // openEditorDialog
+        vi.fn(), // openModelDialog
+        vi.fn(), // toggleCorgiMode
+        mockSetQuittingMessages,
+        vi.fn(), // openPrivacyNotice
+        vi.fn(), // toggleVimEnabled
+        setIsProcessing,
+      ),
+    );
 
     return result;
   };
@@ -332,19 +335,19 @@ describe('useSlashCommandProcessor', () => {
   });
 
   describe('Action Result Handling', () => {
-    it('should handle "dialog: help" action', async () => {
+    it('should handle "dialog: theme" action', async () => {
       const command = createTestCommand({
-        name: 'helpcmd',
-        action: vi.fn().mockResolvedValue({ type: 'dialog', dialog: 'help' }),
+        name: 'themecmd',
+        action: vi.fn().mockResolvedValue({ type: 'dialog', dialog: 'theme' }),
       });
       const result = setupProcessorHook([command]);
       await waitFor(() => expect(result.current.slashCommands).toHaveLength(1));
 
       await act(async () => {
-        await result.current.handleSlashCommand('/helpcmd');
+        await result.current.handleSlashCommand('/themecmd');
       });
 
-      expect(mockSetShowHelp).toHaveBeenCalledWith(true);
+      expect(mockOpenThemeDialog).toHaveBeenCalled();
     });
 
     it('should handle "load_history" action', async () => {
@@ -817,16 +820,16 @@ describe('useSlashCommandProcessor', () => {
           mockClearItems,
           mockLoadHistory,
           vi.fn(), // refreshStatic
-          mockSetShowHelp,
           vi.fn(), // onDebugMessage
           vi.fn(), // openThemeDialog
           mockOpenAuthDialog,
-          vi.fn(), // openEditorDialog,
+          vi.fn(), // openEditorDialog
           vi.fn(), // openModelDialog
           vi.fn(), // toggleCorgiMode
           mockSetQuittingMessages,
           vi.fn(), // openPrivacyNotice
-          vi.fn(), // toggleVimEnabled
+          vi.fn().mockResolvedValue(false), // toggleVimEnabled
+          vi.fn(), // setIsProcessing
         ),
       );
 

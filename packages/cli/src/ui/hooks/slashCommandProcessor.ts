@@ -42,7 +42,6 @@ export const useSlashCommandProcessor = (
   clearItems: UseHistoryManagerReturn['clearItems'],
   loadHistory: UseHistoryManagerReturn['loadHistory'],
   refreshStatic: () => void,
-  setShowHelp: React.Dispatch<React.SetStateAction<boolean>>,
   onDebugMessage: (message: string) => void,
   openThemeDialog: () => void,
   openAuthDialog: () => void,
@@ -106,6 +105,11 @@ export const useSlashCommandProcessor = (
           selectedAuthType: message.selectedAuthType,
           gcpProject: message.gcpProject,
         };
+      } else if (message.type === MessageType.HELP) {
+        historyItemContent = {
+          type: 'help',
+          timestamp: message.timestamp,
+        };
       } else if (message.type === MessageType.STATS) {
         historyItemContent = {
           type: 'stats',
@@ -139,7 +143,6 @@ export const useSlashCommandProcessor = (
     },
     [addItem],
   );
-
   const commandContext = useMemo(
     (): CommandContext => ({
       services: {
@@ -334,9 +337,6 @@ export const useSlashCommandProcessor = (
                   return { type: 'handled' };
                 case 'dialog':
                   switch (result.dialog) {
-                    case 'help':
-                      setShowHelp(true);
-                      return { type: 'handled' };
                     case 'auth':
                       openAuthDialog();
                       return { type: 'handled' };
@@ -466,7 +466,6 @@ export const useSlashCommandProcessor = (
     [
       config,
       addItem,
-      setShowHelp,
       openAuthDialog,
       commands,
       commandContext,

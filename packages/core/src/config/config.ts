@@ -338,7 +338,7 @@ export class Config {
     this.noBrowser = params.noBrowser ?? false;
     this.summarizeToolOutput = params.summarizeToolOutput;
     this.ideModeFeature = params.ideModeFeature ?? false;
-    this.ideMode = params.ideMode ?? true;
+    this.ideMode = params.ideMode ?? false;
     this.ideClient = params.ideClient;
 
     if (params.contextFileName) {
